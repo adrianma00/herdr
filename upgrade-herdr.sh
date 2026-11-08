@@ -6,6 +6,7 @@
 #   ./upgrade-herdr.sh --install       ...and swap the binary into place
 #   ./upgrade-herdr.sh --mac           cross-build the macOS client (aarch64) instead
 #   ./upgrade-herdr.sh --mac --install ...and leave it at build/herdr-aarch64-macos
+#   ./upgrade-herdr.sh --no-build      rebase + push only (CI builds); used by selfupdate.sh
 #
 # The patch lives on branch `local/pane-theme` in SRC as one commit on top of the
 # release tag, so an upgrade is a rebase, not a re-apply. If the rebase conflicts,
@@ -21,11 +22,13 @@ PUSH="${PUSH:-1}"
 
 INSTALL=0
 MAC=0
+NO_BUILD=0
 TAG=""
 for arg in "$@"; do
   case "$arg" in
     --install) INSTALL=1 ;;
     --mac) MAC=1 ;;
+    --no-build) NO_BUILD=1 ;;
     -*) echo "unknown option: $arg" >&2; exit 2 ;;
     *) TAG="$arg" ;;
   esac
@@ -60,6 +63,11 @@ EOF
 fi
 git -C "$SRC" diff "$TAG".."$BRANCH" > "$PATCH_OUT"
 echo "patch: $PATCH_OUT ($(git -C "$SRC" diff --shortstat "$TAG".."$BRANCH"))"
+
+if [ "$NO_BUILD" = 1 ]; then
+  say "done (rebase + push only; CI builds the binaries)"
+  exit 0
+fi
 
 if [ "$PUSH" = 1 ]; then
   say "pushing $BRANCH to $REMOTE"

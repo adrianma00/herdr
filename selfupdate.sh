@@ -68,7 +68,7 @@ if [ -d "$SRC/.git" ]; then
   fi
 
   say "rebase the patch onto $TAG"
-  if ! "$SRC/upgrade-herdr.sh" "$TAG" >/tmp/herdr-upgrade.log 2>&1; then
+  if ! "$SRC/upgrade-herdr.sh" "$TAG" --no-build >/tmp/herdr-upgrade.log 2>&1; then
     tail -25 /tmp/herdr-upgrade.log >&2
     die "upgrade-herdr.sh failed (see /tmp/herdr-upgrade.log); resolve the rebase in $SRC and re-run"
   fi
@@ -111,8 +111,9 @@ TARGET="$(command -v herdr || true)"
 [ -n "$TARGET" ] || die "herdr not on PATH"
 REAL="$(readlink -f "$TARGET" 2>/dev/null || echo "$TARGET")"
 # When the wrapper is installed, the real binary lives beside it under lib/.
-if [ -x "${TARGET%/*}/../lib/herdr/herdr" ]; then
-  REAL="${TARGET%/*}/../lib/herdr/herdr"
+LIB_REAL="$(cd "${TARGET%/*}/../lib/herdr" 2>/dev/null && pwd)/herdr"
+if [ -x "$LIB_REAL" ]; then
+  REAL="$LIB_REAL"
 fi
 
 say "installing"
