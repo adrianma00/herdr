@@ -59,7 +59,8 @@ if [ -d "$SRC/.git" ]; then
   git -C "$SRC" fetch -q --tags upstream
   LATEST="$(git -C "$SRC" tag --list 'v*' --sort=-v:refname | head -1)"
   [ -n "$TAG" ] || TAG="$LATEST"
-  CURRENT_BASE="$(git -C "$SRC" describe --tags --abbrev=0 "$BRANCH" 2>/dev/null || echo unknown)"
+  # --match v*: the release job also tags the branch head `local-latest`.
+  CURRENT_BASE="$(git -C "$SRC" describe --tags --abbrev=0 --match 'v*' "$BRANCH" 2>/dev/null || echo unknown)"
   echo "newest upstream tag : $TAG"
   echo "branch base         : $CURRENT_BASE"
 
