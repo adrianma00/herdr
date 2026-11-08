@@ -139,3 +139,27 @@ jobs:
             herdr-macos-aarch64
             BUILD_INFO.txt
           if-no-files-found: error
+
+  # A moving release so any machine can fetch the binaries with plain HTTPS: release
+  # assets are public even when artifact downloads need a token.
+  publish:
+    needs: [linux-x86_64, macos-aarch64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish local-latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -l dist
+          gh release delete local-latest -R "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create local-latest -R "$GITHUB_REPOSITORY" \
+            --title "local build ${GITHUB_SHA:0:8}" \
+            --notes "Binaries from ${GITHUB_SHA} (${GITHUB_REF_NAME}). Replaced on every successful build." \
+            dist/herdr-linux-x86_64 dist/herdr-macos-aarch64

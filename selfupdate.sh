@@ -5,12 +5,16 @@
 # unpatched — installing it silently drops the pane-colour fix (that half is
 # server-side). This script instead rebases the local patch onto the newest
 # upstream tag, lets CI build both binaries from the patched source, and installs
-# the artifact for this platform.
+# the build for this platform.
 #
 #   selfupdate.sh              update the binary for this host
 #   selfupdate.sh --restart    ...and restart the server (panes resume via pi --session)
 #   selfupdate.sh --check      only report whether upstream has a newer tag
 #   selfupdate.sh --tag v0.9.7 update onto a specific tag
+#
+# Where the fork is checked out (the Linux server) it rebases and pushes; anywhere
+# else it just installs the newest published build. `gh` is optional: the binaries
+# are published as assets of a moving release, which plain HTTPS can fetch.
 #
 # Exit codes: 0 updated or already current, 1 failure, 2 usage.
 set -euo pipefail
@@ -18,6 +22,7 @@ set -euo pipefail
 SRC="${HERDR_FORK:-/mnt/dev-antigravity/herdr}"
 REPO="${HERDR_FORK_REPO:-adrianma00/herdr}"
 BRANCH="${HERDR_FORK_BRANCH:-local/pane-theme}"
+RELEASE="${HERDR_RELEASE_TAG:-local-latest}"
 TIMEOUT_S="${HERDR_UPDATE_TIMEOUT:-1800}"
 
 RESTART=0
@@ -29,7 +34,7 @@ while [ $# -gt 0 ]; do
     --check) CHECK_ONLY=1 ;;
     --handoff) : ;; # upstream's flag: we restart deliberately, not silently
     --tag) shift; TAG="${1:-}" ;;
-    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -39,15 +44,15 @@ say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 case "$(uname -s)" in
-  Linux)  ARTIFACT=herdr-linux-x86_64; BIN_NAME=herdr ;;
-  Darwin) ARTIFACT=herdr-macos-aarch64; BIN_NAME=herdr ;;
+  Linux)  ARTIFACT=herdr-linux-x86_64 ;;
+  Darwin) ARTIFACT=herdr-macos-aarch64 ;;
   *) die "unsupported platform $(uname -s)" ;;
 esac
 
-command -v gh >/dev/null || die "gh CLI not found (needed to fetch the CI artifact)"
+HAVE_GH=0
+command -v gh >/dev/null 2>&1 && HAVE_GH=1
 
-# The rebase only happens where the fork is checked out (the Linux server). A Mac
-# client just pulls the artifact CI already built.
+# 1. Rebase where the fork lives; elsewhere the build is already published.
 if [ -d "$SRC/.git" ]; then
   say "upstream state"
   git -C "$SRC" fetch -q --tags origin
@@ -59,10 +64,7 @@ if [ -d "$SRC/.git" ]; then
   echo "branch base         : $CURRENT_BASE"
 
   if [ "$CHECK_ONLY" = 1 ]; then
-    if [ "$CURRENT_BASE" = "$TAG" ]; then
-      echo "already on $TAG — nothing to do"
-      exit 0
-    fi
+    [ "$CURRENT_BASE" = "$TAG" ] && { echo "already on $TAG — nothing to do"; exit 0; }
     echo "update available: $CURRENT_BASE -> $TAG"
     exit 0
   fi
@@ -74,63 +76,73 @@ if [ -d "$SRC/.git" ]; then
   fi
   tail -4 /tmp/herdr-upgrade.log
 else
-  [ "$CHECK_ONLY" = 1 ] && { echo "no fork checkout at $SRC; latest CI artifact will be installed"; exit 0; }
-  say "no fork checkout here — installing the newest CI artifact for $BRANCH"
+  if [ "$CHECK_ONLY" = 1 ]; then
+    echo "no fork checkout at $SRC — this host installs the published build"
+    exit 0
+  fi
+  say "no fork checkout here — installing the newest published build"
 fi
 
-HEAD_SHA="$(gh api "/repos/$REPO/branches/$BRANCH" --jq .commit.sha 2>/dev/null || true)"
-[ -n "$HEAD_SHA" ] || die "cannot read $REPO branch $BRANCH"
-
-say "waiting for the CI build of $HEAD_SHA"
-deadline=$(( $(date +%s) + TIMEOUT_S ))
-started=$(date +%s)
-run=""
-while :; do
-  run="$(gh run list -R "$REPO" -b "$BRANCH" -L 20 \
-        --json databaseId,headSha,conclusion,status \
-        --jq "[.[] | select(.headSha==\"$HEAD_SHA\")][0] | \"\(.databaseId) \(.status) \(.conclusion // \"-\")\"" 2>/dev/null || true)"
-  # A commit that only touches docs is skipped by the workflow's paths-ignore, so
-  # there may never be a run for the head sha. Fall back to the newest successful
-  # build of the branch after a grace period.
-  if [ -z "$run" ] && [ $(( $(date +%s) - started )) -gt 120 ]; then
-    newest="$(gh run list -R "$REPO" -b "$BRANCH" -L 20 --json headSha,conclusion \
-      --jq '[.[] | select(.conclusion=="success")][0].headSha' 2>/dev/null || true)"
-    if [ -n "$newest" ] && [ "$newest" != "$HEAD_SHA" ]; then
-      echo "no run for $HEAD_SHA (docs-only commit?) — using the newest build, ${newest:0:8}"
-      HEAD_SHA="$newest"
-    fi
+# 2. Wait for the build of this commit (needs gh and the fork's history).
+if [ "$HAVE_GH" = 1 ]; then
+  HEAD_SHA="$(gh api "/repos/$REPO/branches/$BRANCH" --jq .commit.sha 2>/dev/null || true)"
+  if [ -n "$HEAD_SHA" ]; then
+    say "waiting for the CI build of $HEAD_SHA"
+    deadline=$(( $(date +%s) + TIMEOUT_S ))
+    started=$(date +%s)
+    while :; do
+      run="$(gh run list -R "$REPO" -b "$BRANCH" -L 20 \
+            --json databaseId,headSha,conclusion,status \
+            --jq "[.[] | select(.headSha==\"$HEAD_SHA\")][0] | \"\(.databaseId) \(.status) \(.conclusion // \"-\")\"" 2>/dev/null || true)"
+      # A docs-only commit is skipped by the workflow's paths-ignore, so a run for
+      # the head sha may never appear. Fall back to the newest successful build.
+      if [ -z "$run" ] && [ $(( $(date +%s) - started )) -gt 120 ]; then
+        newest="$(gh run list -R "$REPO" -b "$BRANCH" -L 20 --json headSha,conclusion \
+          --jq '[.[] | select(.conclusion=="success")][0].headSha' 2>/dev/null || true)"
+        if [ -n "$newest" ] && [ "$newest" != "$HEAD_SHA" ]; then
+          echo "no run for $HEAD_SHA (docs-only commit?) — using the newest build, ${newest:0:8}"
+          HEAD_SHA="$newest"
+        fi
+      fi
+      case "$run" in
+        *" completed success") break ;;
+        *" completed "*) die "CI failed for $HEAD_SHA: gh run view ${run%% *} -R $REPO" ;;
+        "") echo "no run yet for $HEAD_SHA" ;;
+        *) echo "run ${run%% *}: ${run#* }" ;;
+      esac
+      [ "$(date +%s)" -lt "$deadline" ] || die "timed out waiting for CI; gh run list -R $REPO -L 5"
+      sleep 20
+    done
   fi
-  case "$run" in
-    *" completed success") break ;;
-    *" completed "*) die "CI failed for $HEAD_SHA: gh run view ${run%% *} -R $REPO" ;;
-    "") echo "no run yet for $HEAD_SHA" ;;
-    *) echo "run ${run%% *}: ${run#* }" ;;
-  esac
-  [ "$(date +%s)" -lt "$deadline" ] || die "timed out waiting for CI; gh run list -R $REPO -L 5"
-  sleep 20
-done
-RUN_ID="${run%% *}"
+fi
 
-say "downloading $ARTIFACT from run $RUN_ID"
+# 3. Download. Release assets are public HTTPS; CI artifacts need a token.
+say "downloading $ARTIFACT"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-gh run download "$RUN_ID" -R "$REPO" -n "$ARTIFACT" -D "$tmp" >/dev/null
-NEW="$(find "$tmp" -type f -name "$ARTIFACT" -o -type f -name "$BIN_NAME" | head -1)"
-[ -n "$NEW" ] || die "artifact $ARTIFACT not found in run $RUN_ID"
+if curl -fsSL -o "$tmp/$ARTIFACT" \
+    "https://github.com/$REPO/releases/download/$RELEASE/$ARTIFACT" 2>/dev/null; then
+  echo "from release $RELEASE"
+elif [ "$HAVE_GH" = 1 ]; then
+  gh run download -R "$REPO" -n "$ARTIFACT" -D "$tmp" >/dev/null
+  echo "from the newest CI run"
+else
+  die "no release asset at $REPO and no gh CLI to fall back on"
+fi
+curl -fsSL -o "$tmp/BUILD_INFO.txt" \
+  "https://github.com/$REPO/releases/download/$RELEASE/BUILD_INFO.txt" 2>/dev/null || true
 cat "$tmp/BUILD_INFO.txt" 2>/dev/null || true
 
+# 4. Install beside the launcher, keeping a backup.
 TARGET="$(command -v herdr || true)"
 [ -n "$TARGET" ] || die "herdr not on PATH"
 REAL="$(readlink -f "$TARGET" 2>/dev/null || echo "$TARGET")"
-# When the wrapper is installed, the real binary lives beside it under lib/.
 LIB_REAL="$(cd "${TARGET%/*}/../lib/herdr" 2>/dev/null && pwd)/herdr"
-if [ -x "$LIB_REAL" ]; then
-  REAL="$LIB_REAL"
-fi
+[ -x "$LIB_REAL" ] && REAL="$LIB_REAL"
 
 say "installing"
 cp "$REAL" "$REAL.bak"
-cp "$NEW" "$REAL.new"
+cp "$tmp/$ARTIFACT" "$REAL.new"
 chmod +x "$REAL.new"
 mv "$REAL.new" "$REAL"
 echo "installed $REAL ($("$REAL" --version))"
