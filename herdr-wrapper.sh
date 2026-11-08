@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# HERDR_LAUNCHER_V1 — install-wrapper.sh keys off this line.
 # `herdr` launcher. Everything is the real binary except `update`, which runs our
 # pipeline instead of upstream's downloader — official release assets are
 # unpatched, and the pane-colour half of the patch is server-side, so installing
@@ -16,7 +17,15 @@
 set -euo pipefail
 
 real="${HERDR_REAL_BIN:-$HOME/.local/lib/herdr/herdr}"
-selfupdate="${HERDR_SELFUPDATE:-/mnt/dev-antigravity/herdr/selfupdate.sh}"
+
+# selfupdate.sh sits beside the real binary once install-wrapper.sh has run;
+# fall back to the fork checkout (the Linux server) and then to nothing.
+selfupdate="${HERDR_SELFUPDATE:-}"
+if [ -z "$selfupdate" ]; then
+  for candidate in "${real%/*}/selfupdate.sh" /mnt/dev-antigravity/herdr/selfupdate.sh; do
+    if [ -x "$candidate" ]; then selfupdate="$candidate"; break; fi
+  done
+fi
 
 if [ "${1:-}" = "update" ]; then
   shift
