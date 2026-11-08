@@ -83,11 +83,23 @@ HEAD_SHA="$(gh api "/repos/$REPO/branches/$BRANCH" --jq .commit.sha 2>/dev/null 
 
 say "waiting for the CI build of $HEAD_SHA"
 deadline=$(( $(date +%s) + TIMEOUT_S ))
+started=$(date +%s)
 run=""
 while :; do
   run="$(gh run list -R "$REPO" -b "$BRANCH" -L 20 \
         --json databaseId,headSha,conclusion,status \
         --jq "[.[] | select(.headSha==\"$HEAD_SHA\")][0] | \"\(.databaseId) \(.status) \(.conclusion // \"-\")\"" 2>/dev/null || true)"
+  # A commit that only touches docs is skipped by the workflow's paths-ignore, so
+  # there may never be a run for the head sha. Fall back to the newest successful
+  # build of the branch after a grace period.
+  if [ -z "$run" ] && [ $(( $(date +%s) - started )) -gt 120 ]; then
+    newest="$(gh run list -R "$REPO" -b "$BRANCH" -L 20 --json headSha,conclusion \
+      --jq '[.[] | select(.conclusion=="success")][0].headSha' 2>/dev/null || true)"
+    if [ -n "$newest" ] && [ "$newest" != "$HEAD_SHA" ]; then
+      echo "no run for $HEAD_SHA (docs-only commit?) — using the newest build, ${newest:0:8}"
+      HEAD_SHA="$newest"
+    fi
+  fi
   case "$run" in
     *" completed success") break ;;
     *" completed "*) die "CI failed for $HEAD_SHA: gh run view ${run%% *} -R $REPO" ;;
