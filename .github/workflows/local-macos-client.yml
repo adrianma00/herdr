@@ -157,6 +157,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Both build jobs emit BUILD_INFO.txt; write one for the release instead.
+          printf 'commit=%s\nbranch=%s\nrelease=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_REF_NAME" "local-latest" > dist/BUILD_INFO.txt
           ls -l dist
           gh release delete local-latest -R "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
           gh release create local-latest -R "$GITHUB_REPOSITORY" \
