@@ -165,4 +165,4 @@ jobs:
           gh release create local-latest -R "$GITHUB_REPOSITORY" \
             --title "local build ${GITHUB_SHA:0:8}" \
             --notes "Binaries from ${GITHUB_SHA} (${GITHUB_REF_NAME}). Replaced on every successful build." \
-            dist/herdr-linux-x86_64 dist/herdr-macos-aarch64
+            dist/herdr-linux-x86_64 dist/herdr-macos-aarch64 dist/BUILD_INFO.txt
