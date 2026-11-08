@@ -46,6 +46,48 @@ use clipboard_forwarding::decode_clipboard_payload;
 use clipboard_forwarding::forward_clipboard;
 #[cfg(test)]
 use config_reload::reload_local_client_config;
+
+/// Ask macOS for the current appearance. `defaults` exits non-zero in light mode because
+/// `AppleInterfaceStyle` is absent, which is the light case.
+#[cfg(target_os = "macos")]
+fn macos_appearance_poll_loop(
+    event_tx: tokio::sync::mpsc::Sender<ClientLoopEvent>,
+    should_quit: &Arc<AtomicBool>,
+) {
+    use crate::terminal_theme::HostAppearance;
+
+    // Give the startup colour query a moment to go out first.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let mut last: Option<HostAppearance> = None;
+    while !should_quit.load(Ordering::Acquire) {
+        let dark = std::process::Command::new("/usr/bin/defaults")
+            .args(["read", "-g", "AppleInterfaceStyle"])
+            .output()
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .trim()
+                    .eq_ignore_ascii_case("dark")
+            })
+            .unwrap_or(false);
+        let appearance = if dark {
+            HostAppearance::Dark
+        } else {
+            HostAppearance::Light
+        };
+        if last != Some(appearance) {
+            last = Some(appearance);
+            if event_tx
+                .blocking_send(ClientLoopEvent::StdinInput(
+                    appearance.color_scheme_report().to_vec(),
+                ))
+                .is_err()
+            {
+                return;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+    }
+}
 use config_reload::{apply_reload, init_logging};
 use events::ClientLoopEvent;
 use loop_config::ClientLoopConfig;
@@ -610,6 +652,19 @@ async fn run_client_loop(
             &resize_quit,
         );
     });
+
+    // Apple Terminal never answers the OSC 10/11 colour queries, so the host appearance
+    // stays unknown and `theme.auto_switch` (plus the appearance the panes report) never
+    // follows the system. Poll the macOS setting and feed the same report a reporting
+    // terminal would send through the normal input path.
+    #[cfg(target_os = "macos")]
+    if state.shell.is_some() {
+        let appearance_quit = should_quit.clone();
+        let appearance_tx = event_tx.clone();
+        std::thread::spawn(move || {
+            macos_appearance_poll_loop(appearance_tx, &appearance_quit);
+        });
+    }
 
     let mut write_stream = if let Some((stream, handshake)) = initial {
         let max_frame_size = if state.kitty_graphics_enabled {

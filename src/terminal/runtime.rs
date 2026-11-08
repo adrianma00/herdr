@@ -97,6 +97,10 @@ impl TerminalRuntime {
         render_notify: Arc<Notify>,
         render_dirty: Arc<RenderSignal>,
     ) -> std::io::Result<Self> {
+        // Panes report the theme's colours to the programs inside them (OSC 10/11/4), so a
+        // program sees the background its pane is actually painted with.
+        let host_terminal_theme =
+            crate::terminal_theme::pane_terminal_theme().unwrap_or(host_terminal_theme);
         crate::pane::PaneRuntime::spawn(
             pane_id,
             rows,
@@ -131,6 +135,10 @@ impl TerminalRuntime {
         render_notify: Arc<Notify>,
         render_dirty: Arc<RenderSignal>,
     ) -> std::io::Result<Self> {
+        // Panes report the theme's colours to the programs inside them (OSC 10/11/4), so a
+        // program sees the background its pane is actually painted with.
+        let host_terminal_theme =
+            crate::terminal_theme::pane_terminal_theme().unwrap_or(host_terminal_theme);
         crate::pane::PaneRuntime::spawn_with_initial_history(
             pane_id,
             rows,
@@ -166,6 +174,10 @@ impl TerminalRuntime {
         render_notify: Arc<Notify>,
         render_dirty: Arc<RenderSignal>,
     ) -> std::io::Result<Self> {
+        // Panes report the theme's colours to the programs inside them (OSC 10/11/4), so a
+        // program sees the background its pane is actually painted with.
+        let host_terminal_theme =
+            crate::terminal_theme::pane_terminal_theme().unwrap_or(host_terminal_theme);
         crate::pane::PaneRuntime::spawn_shell_command(
             pane_id,
             rows,
@@ -201,6 +213,10 @@ impl TerminalRuntime {
         render_notify: Arc<Notify>,
         render_dirty: Arc<RenderSignal>,
     ) -> std::io::Result<Self> {
+        // Panes report the theme's colours to the programs inside them (OSC 10/11/4), so a
+        // program sees the background its pane is actually painted with.
+        let host_terminal_theme =
+            crate::terminal_theme::pane_terminal_theme().unwrap_or(host_terminal_theme);
         crate::pane::PaneRuntime::spawn_argv_command(
             pane_id,
             rows,

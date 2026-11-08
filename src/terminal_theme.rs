@@ -31,6 +31,102 @@ impl RgbColor {
     }
 }
 
+/// The default colours panes report to the programs inside them. Herdr keeps this in sync
+/// with the active theme (see `App::apply_host_terminal_theme_to_panes`), so a program that
+/// asks for the background sees the colour the pane is actually painted with instead of
+/// whatever the host terminal left behind.
+static PANE_TERMINAL_THEME: std::sync::RwLock<Option<TerminalTheme>> =
+    std::sync::RwLock::new(None);
+
+pub fn set_pane_terminal_theme(theme: TerminalTheme) {
+    if let Ok(mut slot) = PANE_TERMINAL_THEME.write() {
+        *slot = Some(theme);
+    }
+}
+
+pub fn pane_terminal_theme() -> Option<TerminalTheme> {
+    PANE_TERMINAL_THEME.read().ok().and_then(|slot| *slot)
+}
+
+fn rgb_of(color: ratatui::style::Color) -> Option<RgbColor> {
+    match color {
+        ratatui::style::Color::Rgb(r, g, b) => Some(RgbColor { r, g, b }),
+        _ => None,
+    }
+}
+
+/// The pane default colours for an Herdr palette: the host terminal wins where it reported
+/// colours, the theme fills in the rest. Herdr themes use `Reset`/ANSI names to mean "defer to
+/// the host", which is why those stay unset.
+pub fn pane_theme_from_palette(
+    palette: &crate::app::state::Palette,
+    host: TerminalTheme,
+) -> TerminalTheme {
+    let mut theme = host;
+    if theme.foreground.is_none() {
+        theme.foreground = rgb_of(palette.text);
+    }
+    if theme.background.is_none() {
+        theme.background = rgb_of(palette.surface_dim).or_else(|| rgb_of(palette.panel_bg));
+    }
+    let ansi = [
+        palette.surface_dim,
+        palette.red,
+        palette.green,
+        palette.yellow,
+        palette.blue,
+        palette.mauve,
+        palette.teal,
+        palette.subtext0,
+        palette.overlay0,
+        palette.red,
+        palette.green,
+        palette.yellow,
+        palette.accent,
+        palette.mauve,
+        palette.teal,
+        palette.text,
+    ];
+    for (index, color) in ansi.into_iter().enumerate() {
+        if theme.palette[index].is_none() {
+            theme.palette[index] = rgb_of(color);
+        }
+    }
+    theme
+}
+
+/// Rewrite a pane's OSC 10/11/4 reply so it reports `theme` instead of the host terminal's
+/// default colours. Returns the replacement sequence, or `None` for other responses.
+pub fn themed_color_response(payload: &[u8], theme: &TerminalTheme) -> Option<Vec<u8>> {
+    fn color_sequence(prefix: &[u8], color: RgbColor) -> Vec<u8> {
+        let mut out = Vec::with_capacity(prefix.len() + 32);
+        out.extend_from_slice(b"\x1b]");
+        out.extend_from_slice(prefix);
+        out.extend_from_slice(
+            format!(
+                ";rgb:{:02x}{:02x}/{:02x}{:02x}/{:02x}{:02x}\x1b\\",
+                color.r, color.r, color.g, color.g, color.b, color.b
+            )
+            .as_bytes(),
+        );
+        out
+    }
+
+    if payload.starts_with(b"10;") {
+        return theme.foreground.map(|color| color_sequence(b"10", color));
+    }
+    if payload.starts_with(b"11;") {
+        return theme.background.map(|color| color_sequence(b"11", color));
+    }
+    let rest = payload.strip_prefix(b"4;")?;
+    let index_end = rest.iter().position(|byte| *byte == b';')?;
+    let index: usize = std::str::from_utf8(&rest[..index_end]).ok()?.parse().ok()?;
+    let color = (*theme.palette.get(index)?)?;
+    let mut prefix = b"4;".to_vec();
+    prefix.extend_from_slice(&rest[..index_end]);
+    Some(color_sequence(&prefix, color))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerminalTheme {
     pub foreground: Option<RgbColor>,

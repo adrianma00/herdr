@@ -490,6 +490,14 @@ impl App {
         let agent_manifest_summaries = Vec::new();
         let theme_runtime = theme_runtime_config(config, true);
         let (theme_palette, theme_name) = resolve_effective_theme(&theme_runtime, None);
+        // Panes report these colours to the programs inside them (OSC 10/11/4) until a
+        // client reports the host terminal's own colours.
+        crate::terminal_theme::set_pane_terminal_theme(
+            crate::terminal_theme::pane_theme_from_palette(
+                &theme_palette,
+                crate::terminal_theme::TerminalTheme::default(),
+            ),
+        );
 
         let mut state = AppState {
             terminals: std::collections::HashMap::new(),

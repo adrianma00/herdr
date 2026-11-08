@@ -1419,6 +1419,32 @@ impl GhosttyPaneTerminal {
             c1_xtgettcap_responses,
             &mut terminal_responses,
         );
+        // libghostty answers OSC 10/11/4 with the pane's VT defaults, which are the host
+        // terminal's (or its own fallback) rather than the colours Herdr paints. Rewrite those
+        // replies so programs see the theme they are actually drawn on.
+        if let Some(theme) = crate::terminal_theme::pane_terminal_theme() {
+            for response in terminal_responses.iter_mut() {
+                let payload = response
+                    .as_ref()
+                    .strip_prefix(b"\x1b]")
+                    .and_then(|rest| {
+                        rest.iter()
+                            .position(|byte| *byte == 0x07)
+                            .map(|end| (rest, end))
+                            .or_else(|| {
+                                rest.windows(2)
+                                    .position(|window| window == b"\x1b\\")
+                                    .map(|end| (rest, end))
+                            })
+                    });
+                let Some((rest, end)) = payload else { continue };
+                if let Some(replacement) =
+                    crate::terminal_theme::themed_color_response(&rest[..end], &theme)
+                {
+                    *response = Bytes::from(replacement);
+                }
+            }
+        }
         let terminal_bells = core.terminal.take_bell_count();
         let clipboard_writes = core.terminal.take_clipboard_writes();
         let reported_cwd = core
