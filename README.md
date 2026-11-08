@@ -1,3 +1,9 @@
+> **Build fork.** This is `adrianma00/herdr`, a patched build fork of
+> [herdrdev/herdr](https://github.com/herdrdev/herdr) for a few machines — not
+> upstream, and the herdr authors do not read issues or PRs here. The one
+> functional change (panes report the theme's colours; macOS appearance probe) is
+> described in [FORK.md](FORK.md). Upstream is Apache-2.0.
+
 # herdr
 
 
