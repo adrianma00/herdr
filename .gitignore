@@ -27,3 +27,4 @@ __pycache__/
 /.wrangler/
 **/.wrangler/
 artifacts/
+herdr-pane-theme.patch

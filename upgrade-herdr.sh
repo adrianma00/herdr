@@ -16,7 +16,7 @@ set -euo pipefail
 SRC="${SRC:-/mnt/dev-antigravity/herdr}"
 BRANCH="${BRANCH:-local/pane-theme}"
 ZIG="${ZIG:-/home/ama/build/zig-x86_64-linux-0.16.0/zig}"
-PATCH_OUT="${PATCH_OUT:-/mnt/dev-antigravity/herdr/herdr-pane-theme.patch}"
+PATCH_OUT="${PATCH_OUT:-/mnt/dev-antigravity/herdr/artifacts/herdr-pane-theme.patch}"
 REMOTE="${REMOTE:-origin}"
 PUSH="${PUSH:-1}"
 
@@ -61,6 +61,7 @@ Conflict while rebasing. Resolve it, then:
 EOF
   exit 1
 fi
+mkdir -p "$(dirname "$PATCH_OUT")"
 git -C "$SRC" diff "$TAG".."$BRANCH" > "$PATCH_OUT"
 echo "patch: $PATCH_OUT ($(git -C "$SRC" diff --shortstat "$TAG".."$BRANCH"))"
 
