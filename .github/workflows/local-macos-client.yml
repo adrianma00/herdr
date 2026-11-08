@@ -1,0 +1,81 @@
+# Builds the patched herdr client for Apple Silicon on GitHub's macOS runner.
+#
+# This is the local fork's build path: the Mac only downloads a ~31 MB artifact,
+# so no Rust/Zig toolchain or multi-GB target directory is needed there.
+#
+# Trigger: Actions → "local macOS client" → Run workflow (or a push to the
+# local/pane-theme branch).
+name: local macOS client
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [local/pane-theme]
+    paths-ignore:
+      - '**.md'
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  RUST_TOOLCHAIN_VERSION: 1.96.1
+
+jobs:
+  macos-aarch64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
+          targets: aarch64-apple-darwin
+
+      - name: Install Zig
+        uses: vercel-labs/setup-zig@v1
+        with:
+          version: 0.16.0
+
+      - name: Install macOS build tools
+        run: brew install cmake ninja
+
+      - name: Cache cargo and zig
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            .zig-cache
+            vendor/libghostty-vt/.zig-cache
+          key: ${{ runner.os }}-aarch64-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+      - name: Build
+        run: cargo build --release --locked --target aarch64-apple-darwin
+
+      - name: Smoke test
+        run: ./target/aarch64-apple-darwin/release/herdr --version
+
+      - name: Package
+        run: |
+          cp target/aarch64-apple-darwin/release/herdr herdr-macos-aarch64
+          file herdr-macos-aarch64 > BUILD_INFO.txt
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "target=aarch64-apple-darwin"
+          } >> BUILD_INFO.txt
+          python3 -c "import hashlib,pathlib; p=pathlib.Path('herdr-macos-aarch64'); print(f'sha256={hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}')" >> BUILD_INFO.txt
+          cat BUILD_INFO.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: herdr-macos-aarch64
+          path: |
+            herdr-macos-aarch64
+            BUILD_INFO.txt
+          if-no-files-found: error
