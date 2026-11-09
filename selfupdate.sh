@@ -7,8 +7,8 @@
 # upstream tag, lets CI build both binaries from the patched source, and installs
 # the build for this platform.
 #
-#   selfupdate.sh              update the binary for this host
-#   selfupdate.sh --restart    ...and restart the server (panes resume via pi --session)
+#   selfupdate.sh              update the binary and hand the server over to it
+#   selfupdate.sh --restart    kill and restart the server instead (panes resume via pi --session)
 #   selfupdate.sh --check      only report whether upstream has a newer tag
 #   selfupdate.sh --tag v0.9.7 update onto a specific tag
 #
@@ -160,16 +160,26 @@ EOF
   exit 0
 fi
 
+# Hand the running server over to the new binary. This is the update path's own
+# mechanism: the old server passes its sockets and pane PTYs to the new process,
+# so panes and their child processes keep running — no `pi --session` resume, no
+# lost in-flight turn.
 if [ "$RESTART" = 1 ]; then
   say "restarting the server (panes resume through pi --session)"
   herdr server stop || true
 else
-  cat <<'EOF'
+  say "handing the server over to the new binary"
+  if out="$(herdr server live-handoff --import-exe "$REAL" 2>&1)"; then
+    printf '%s\n' "$out" | tail -2
+  else
+    printf '%s\n' "$out" | tail -3
+    cat <<'EOF'
 
-The running server still uses the old binary. Restart it when convenient:
+Live handoff failed (the running server may predate it). Restart when convenient:
 
     herdr server stop        # panes come back through `pi --session <path>`
 
 or re-run this script with --restart.
 EOF
+  fi
 fi
