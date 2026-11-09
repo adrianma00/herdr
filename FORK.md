@@ -39,6 +39,22 @@ regenerate the patch, push; CI builds). On an installed machine, `herdr update`
 runs `selfupdate.sh`, which does exactly that and then installs the artifact for
 the platform — see `install-wrapper.sh` for the launcher that wires it in.
 
+## Installing the tooling on a client machine
+
+Keep the scripts out of `$HOME` itself:
+
+```sh
+mkdir -p ~/bin
+scp antigravity:/mnt/dev-antigravity/herdr/{install-wrapper.sh,herdr-wrapper.sh,selfupdate.sh} ~/bin/
+~/bin/install-wrapper.sh          # launcher -> ~/.local/bin/herdr, copies selfupdate.sh to ~/.local/lib/herdr
+herdr update                      # fetches the published build, no gh or token needed
+```
+
+`install-wrapper.sh` only needs its two siblings in the same directory; where
+they live is up to you. Afterwards the pieces are `~/.local/bin/herdr` (launcher),
+`~/.local/lib/herdr/herdr` (binary, `.bak` beside it) and
+`~/.local/lib/herdr/selfupdate.sh` — nothing else is written to `$HOME`.
+
 ## Upstreaming
 
 Both behaviours are upstream-shaped bug fixes. If upstream takes either one, drop
