@@ -64,6 +64,16 @@ they live is up to you. Afterwards the pieces are `~/.local/bin/herdr` (launcher
 `~/.local/lib/herdr/herdr` (binary, `.bak` beside it) and
 `~/.local/lib/herdr/selfupdate.sh` — nothing else is written to `$HOME`.
 
+## Pull requests here
+
+Bot PRs (Dependabot, and anything similar) are closed unmerged. The fork is
+upstream's tag plus one patch: merging a dependency bump would make the lockfile
+ours rather than upstream's, and every future rebase would then conflict in
+`Cargo.lock` for no benefit. Dependency updates arrive the intended way — by
+rebasing onto the next upstream tag, where the maintainers have already tested a
+coherent set. Dependabot is off here (`.github/dependabot.yml.disabled`) and the
+upstream workflows are disabled, so an outside PR has nothing to run.
+
 ## Upstreaming
 
 Both behaviours are upstream-shaped bug fixes. If upstream takes either one, drop
