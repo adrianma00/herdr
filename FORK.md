@@ -12,9 +12,11 @@ CI and tooling). The code change:
    (or libghostty's defaults), so a program inside a pane that asked for the
    background — OSC 10/11/4 — was told a colour the pane was not drawn on. That
    made TUIs derive unreadable palettes (light panels and pale text on a dark
-   pane). The pane defaults now come from the active theme (host-reported colours
-   still win where present), are re-applied when the theme changes and to new
-   panes, and OSC replies are rewritten to match.
+   pane). The pane defaults now come from the active theme, are re-applied when
+   the theme changes and to new panes, and OSC replies are rewritten to match.
+   The theme wins over the host's reported colours deliberately: terminals report
+   theirs once at startup, so after a macOS switch the host colour describes the
+   previous appearance. A `terminal` theme (Reset tokens) keeps host colours.
 2. **macOS appearance probe.** Apple Terminal never answers OSC colour queries and
    never sends `CSI ? 997`, so `theme.auto_switch` could not follow macOS. The
    client now polls `defaults read -g AppleInterfaceStyle` and injects the same

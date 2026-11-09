@@ -63,11 +63,17 @@ pub fn pane_theme_from_palette(
     host: TerminalTheme,
 ) -> TerminalTheme {
     let mut theme = host;
-    if theme.foreground.is_none() {
-        theme.foreground = rgb_of(palette.text);
+    // The theme wins over the host's reported colours. Herdr paints the pane with
+    // the theme, so a program that asks for the background must be told the theme's
+    // colour — a host terminal that only reports its colours once at startup would
+    // otherwise leave every pane describing a background from the other appearance
+    // (light panels on a dark pane after a macOS switch). A `terminal` theme sets
+    // these tokens to Reset, which keeps the host's own colours in play.
+    if let Some(color) = rgb_of(palette.text) {
+        theme.foreground = Some(color);
     }
-    if theme.background.is_none() {
-        theme.background = rgb_of(palette.surface_dim).or_else(|| rgb_of(palette.panel_bg));
+    if let Some(color) = rgb_of(palette.surface_dim).or_else(|| rgb_of(palette.panel_bg)) {
+        theme.background = Some(color);
     }
     let ansi = [
         palette.surface_dim,
@@ -88,8 +94,8 @@ pub fn pane_theme_from_palette(
         palette.text,
     ];
     for (index, color) in ansi.into_iter().enumerate() {
-        if theme.palette[index].is_none() {
-            theme.palette[index] = rgb_of(color);
+        if let Some(color) = rgb_of(color) {
+            theme.palette[index] = Some(color);
         }
     }
     theme
