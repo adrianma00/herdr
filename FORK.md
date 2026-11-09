@@ -41,6 +41,13 @@ regenerate the patch, push; CI builds). On an installed machine, `herdr update`
 runs `selfupdate.sh`, which does exactly that and then installs the artifact for
 the platform — see `install-wrapper.sh` for the launcher that wires it in.
 
+On the server it finishes with a **live handoff** (`herdr server live-handoff
+--import-exe`): the running server passes its sockets and pane PTYs to the new
+binary, so panes and their child processes keep running — no `pi --session`
+resume, no lost in-flight turn. `herdr update --restart` kills and restarts
+instead (panes come back through `pi --session`), and a server too old to hand
+off falls back to printing that command.
+
 ## Installing the tooling on a client machine
 
 Keep the scripts out of `$HOME` itself:
