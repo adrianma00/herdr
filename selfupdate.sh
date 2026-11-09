@@ -94,12 +94,15 @@ if [ "$HAVE_GH" = 1 ]; then
     deadline=$(( $(date +%s) + TIMEOUT_S ))
     started=$(date +%s)
     while :; do
+      # `... | if . == null then empty` matters: an empty selection renders as the
+      # string "null null -" otherwise, which is not empty and defeats the fallback
+      # below — that is how a docs-only head commit looped until the timeout.
       run="$(gh run list -R "$REPO" -b "$BRANCH" -L 20 \
             --json databaseId,headSha,conclusion,status \
-            --jq "[.[] | select(.headSha==\"$HEAD_SHA\")][0] | \"\(.databaseId) \(.status) \(.conclusion // \"-\")\"" 2>/dev/null || true)"
+            --jq "[.[] | select(.headSha==\"$HEAD_SHA\")][0] | if . == null then empty else \"\(.databaseId) \(.status) \(.conclusion // \"-\")\" end" 2>/dev/null || true)"
       # A docs-only commit is skipped by the workflow's paths-ignore, so a run for
       # the head sha may never appear. Fall back to the newest successful build.
-      if [ -z "$run" ] && [ $(( $(date +%s) - started )) -gt 120 ]; then
+      if [ -z "$run" ] && [ $(( $(date +%s) - started )) -gt 60 ]; then
         newest="$(gh run list -R "$REPO" -b "$BRANCH" -L 20 --json headSha,conclusion \
           --jq '[.[] | select(.conclusion=="success")][0].headSha' 2>/dev/null || true)"
         if [ -n "$newest" ] && [ "$newest" != "$HEAD_SHA" ]; then
