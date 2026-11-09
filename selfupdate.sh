@@ -55,8 +55,10 @@ command -v gh >/dev/null 2>&1 && HAVE_GH=1
 # 1. Rebase where the fork lives; elsewhere the build is already published.
 if [ -d "$SRC/.git" ]; then
   say "upstream state"
-  git -C "$SRC" fetch -q --tags origin
-  git -C "$SRC" fetch -q --tags upstream
+  # --force: the release job moves the local-latest tag on every build, and a plain
+  # `fetch --tags` refuses to clobber it, which failed the whole update.
+  git -C "$SRC" fetch -q --tags --force origin
+  git -C "$SRC" fetch -q --tags --force upstream
   LATEST="$(git -C "$SRC" tag --list 'v*' --sort=-v:refname | head -1)"
   [ -n "$TAG" ] || TAG="$LATEST"
   # --match v*: the release job also tags the branch head `local-latest`.
