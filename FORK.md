@@ -64,6 +64,41 @@ they live is up to you. Afterwards the pieces are `~/.local/bin/herdr` (launcher
 `~/.local/lib/herdr/herdr` (binary, `.bak` beside it) and
 `~/.local/lib/herdr/selfupdate.sh` — nothing else is written to `$HOME`.
 
+## When the next upstream release lands
+
+Upstream fixed the pane-appearance propagation on master (`3f5032c9`, "send pane
+appearance changes only after the matching background", refs #4183) — it is not
+in v0.9.5, which is what this fork is based on.
+
+That fix is **orthogonal to this patch** and merges cleanly:
+
+- theirs sequences *when* the host's colours reach a pane: the `CSI ? 997` push is
+  held until the matching `OSC 11` background arrives (750 ms), and panes opened
+  during the hold answer appearance queries from the background in force then.
+  It rewrote `set_host_terminal_appearance_state`/`set_host_terminal_theme` into
+  `set_host_terminal_state`.
+- ours decides *which* colours a pane reports (the theme, not the host) and
+  supplies the trigger for terminals that never send `997`.
+
+Checked by cherry-picking `3f5032c9` onto `local/pane-theme`: no conflicts, our
+hunks and theirs are in different functions, and the result compiles.
+
+At the next tag, rebase as usual (`upgrade-herdr.sh`) and re-check two things:
+
+1. `apply_host_terminal_theme_to_panes` is still called from
+   `refresh_effective_app_theme` — that call is what makes an `auto_switch` palette
+   change reach the panes, and upstream does not have it because their panes
+   follow the host.
+2. The macOS appearance probe is still needed: the fix reacts to a `997` the host
+   sends, and Apple Terminal never sends one.
+
+Worth deciding then, not now: with their ordering fixed, the theme-wins
+precedence is a choice rather than a bug fix. Dropping it would make panes match
+the terminal exactly (including transparency); keeping it makes panes match
+Herdr's chrome. Do not rebase onto `upstream/master` to test this — master's
+history does not contain the `v0.9.5` tag commit, so that replay drags in upstream
+commits and conflicts in `CHANGELOG.md`/docs. Rebase onto tags.
+
 ## Pull requests here
 
 Bot PRs (Dependabot, and anything similar) are closed unmerged. The fork is
